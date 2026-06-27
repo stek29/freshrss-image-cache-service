@@ -90,3 +90,7 @@ docker build -t freshrss-image-cache-service .
 ## Storage
 
 Cached files are stored under `data_dir`, sharded by the first two hex characters of the SHA-256 hash of the original URL. Metadata is stored as adjacent JSON.
+
+## License
+
+This project is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE).

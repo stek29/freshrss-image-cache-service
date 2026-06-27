@@ -122,6 +122,7 @@ func (s *Service) refresh(ctx context.Context, key, rawURL string, u *url.URL, i
 	}
 	result, err := s.fetcher.Do(ctx, rawURL, originHeaders)
 	if err != nil {
+		s.logger.Warn("origin fetch failed", "url", rawURL, "had_cache", hadCache, "err", err)
 		if hadCache {
 			return &Outcome{Status: StatusBypass}, nil
 		}

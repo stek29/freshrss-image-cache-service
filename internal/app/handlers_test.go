@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -151,6 +152,34 @@ func TestGETStaleFallback(t *testing.T) {
 	}
 	if res.Header.Get("Warning") == "" {
 		t.Fatalf("expected stale warning")
+	}
+}
+
+func TestFetchErrorLoggedAsWarn(t *testing.T) {
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(testPNG(t))
+	}))
+	rawURL := origin.URL + "/image.png"
+	origin.Close()
+
+	cfg := config.Default()
+	cfg.DataDir = t.TempDir()
+	store := storage.NewFileSystemStore(cfg.DataDir)
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	svc := NewService(cfg, store, fetch.NewClient(cfg.HTTPClient), logger)
+
+	_, err := svc.Resolve(t.Context(), rawURL, http.Header{}, "")
+	if err == nil {
+		t.Fatal("expected fetch error")
+	}
+	logText := logs.String()
+	if !strings.Contains(logText, "level=WARN") || !strings.Contains(logText, "msg=\"origin fetch failed\"") {
+		t.Fatalf("expected warn fetch log, got %q", logText)
+	}
+	if !strings.Contains(logText, "url="+rawURL) || !strings.Contains(logText, "had_cache=false") {
+		t.Fatalf("expected fetch context in log, got %q", logText)
 	}
 }
 

@@ -91,6 +91,14 @@ docker build -t freshrss-image-cache-service .
 
 Cached files are stored under `data_dir`, sharded by the first two hex characters of the SHA-256 hash of the original URL. Metadata is stored as adjacent JSON.
 
+## Related Projects
+
+- [Victrid/freshrss-image-cache-plugin](https://github.com/Victrid/freshrss-image-cache-plugin): FreshRSS plugin that rewrites feed image URLs to use an external cache service.
+- [Victrid/image-cache-worker](https://github.com/Victrid/image-cache-worker): Cloudflare Worker implementation of the external image cache service API.
+- [s373r/freshrss-image-cache-service-rs](https://github.com/s373r/freshrss-image-cache-service-rs): Rust implementation of an image cache service compatible with the FreshRSS plugin API.
+
+For `referer` support, use this plugin fork: [stek29/freshrss-image-cache-plugin@6ef70b0](https://github.com/stek29/freshrss-image-cache-plugin/commit/6ef70b09fc50c5d79c892846c239645a444c87c1).
+
 ## License
 
 This project is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE).

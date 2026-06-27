@@ -47,12 +47,22 @@ go run ./cmd/freshrss-image-cache-service
 
 ## Docker
 
+Images are built and published by GitHub Actions on every push to `main`:
+
+- `ghcr.io/stek29/freshrss-image-cache-service:latest`
+- `ghcr.io/stek29/freshrss-image-cache-service:sha-<shortsha>`
+
 ```sh
-docker build -t freshrss-image-cache-service .
 docker run --rm -p 3000:3000 \
   -e IMAGE_CACHE_ACCESS_TOKEN=change-me \
   -v "$PWD/images:/data/images" \
-  freshrss-image-cache-service
+  ghcr.io/stek29/freshrss-image-cache-service:latest
+```
+
+For local development builds:
+
+```sh
+docker build -t freshrss-image-cache-service .
 ```
 
 ## Storage

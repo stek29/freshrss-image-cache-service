@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -201,7 +202,17 @@ func TestAccessLogIncludesURLCacheStatusAndTiming(t *testing.T) {
 	defer ts.Close()
 
 	rawURL := origin.URL + "/image.png"
-	res := get(t, ts.URL+"/?url="+rawURL)
+	referer := "https://reader.example/feed"
+	userAgent := "reader-test"
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/?url="+url.QueryEscape(rawURL)+"&referer="+url.QueryEscape(referer), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("User-Agent", userAgent)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer res.Body.Close()
 	if res.Header.Get("X-Piccache-Status") != StatusMiss {
 		t.Fatalf("expected MISS, got %s", res.Header.Get("X-Piccache-Status"))
@@ -215,10 +226,54 @@ func TestAccessLogIncludesURLCacheStatusAndTiming(t *testing.T) {
 		"method=GET",
 		"path=/",
 		"url=" + rawURL,
+		"client_referer=" + referer,
+		"client_user_agent=" + userAgent,
+		"origin_referer=" + referer,
+		"origin_user_agent=" + userAgent,
+		"origin_status=200",
 		"cache_status=MISS",
 		"status=200",
 		"bytes=",
 		"duration=",
+	} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("expected %q in access log, got %q", want, logText)
+		}
+	}
+}
+
+func TestPrepareFailureAccessLogIncludesOriginStatus(t *testing.T) {
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "down", http.StatusInternalServerError)
+	}))
+	defer origin.Close()
+
+	cfg := config.Default()
+	cfg.DataDir = t.TempDir()
+	cfg.AccessToken = "secret"
+	store := storage.NewFileSystemStore(cfg.DataDir)
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	svc := NewService(cfg, store, fetch.NewClient(cfg.HTTPClient), logger)
+	ts := httptest.NewServer(NewHandler(svc, cfg.AccessToken, cfg.CORS, logger).Routes())
+	defer ts.Close()
+
+	body, _ := json.Marshal(map[string]string{"url": origin.URL + "/image.png", "access_token": "secret"})
+	res, err := http.Post(ts.URL+"/", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status = %d", res.StatusCode)
+	}
+
+	logText := logs.String()
+	for _, want := range []string{
+		"msg=access",
+		"cache_status=BYPASS",
+		"status=502",
+		"origin_status=500",
 	} {
 		if !strings.Contains(logText, want) {
 			t.Fatalf("expected %q in access log, got %q", want, logText)

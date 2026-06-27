@@ -41,11 +41,13 @@ type Service struct {
 }
 
 type Outcome struct {
-	Status      string
-	Metadata    *cache.Metadata
-	Blob        io.ReadCloser
-	BlobInfo    storage.BlobInfo
-	ProxyResult *fetch.Result
+	Status               string
+	Metadata             *cache.Metadata
+	Blob                 io.ReadCloser
+	BlobInfo             storage.BlobInfo
+	ProxyResult          *fetch.Result
+	OriginRequestHeaders http.Header
+	OriginStatusCode     int
 }
 
 func NewService(cfg config.Config, store interface {
@@ -87,7 +89,7 @@ func (s *Service) Resolve(ctx context.Context, rawURL string, incoming http.Head
 	outcome := value.(*Outcome)
 	if outcome.Status == StatusBypass && meta != nil {
 		if blob, info, getErr := s.store.GetBlob(ctx, key); getErr == nil {
-			return &Outcome{Status: StatusStale, Metadata: meta, Blob: blob, BlobInfo: info}, nil
+			return &Outcome{Status: StatusStale, Metadata: meta, Blob: blob, BlobInfo: info, OriginRequestHeaders: outcome.OriginRequestHeaders, OriginStatusCode: outcome.OriginStatusCode}, nil
 		}
 	}
 	return outcome, nil
@@ -124,14 +126,14 @@ func (s *Service) refresh(ctx context.Context, key, rawURL string, u *url.URL, i
 	if err != nil {
 		s.logger.Warn("origin fetch failed", "url", rawURL, "had_cache", hadCache, "err", err)
 		if hadCache {
-			return &Outcome{Status: StatusBypass}, nil
+			return &Outcome{Status: StatusBypass, OriginRequestHeaders: originHeaders.Clone()}, nil
 		}
 		return nil, err
 	}
 	if hadCache && result.StatusCode == http.StatusNotModified {
 		meta, err := s.store.GetMetadata(ctx, key)
 		if err != nil {
-			return &Outcome{Status: StatusBypass, ProxyResult: result}, nil
+			return outcomeFromResult(StatusBypass, result), nil
 		}
 		cache.MergeRevalidationHeaders(meta, result.Header, now)
 		if err := s.store.PutMetadata(ctx, key, meta); err != nil {
@@ -141,14 +143,14 @@ func (s *Service) refresh(ctx context.Context, key, rawURL string, u *url.URL, i
 		if err != nil {
 			return nil, err
 		}
-		return &Outcome{Status: StatusRevalidated, Metadata: meta, Blob: blob, BlobInfo: info}, nil
+		return &Outcome{Status: StatusRevalidated, Metadata: meta, Blob: blob, BlobInfo: info, OriginRequestHeaders: result.RequestHeaders.Clone(), OriginStatusCode: result.StatusCode}, nil
 	}
 	if !result.ValidImage200() {
-		return &Outcome{Status: StatusBypass, ProxyResult: result}, nil
+		return outcomeFromResult(StatusBypass, result), nil
 	}
 	policy, expiresAt, lastModifiedAt := cache.AnalyzeHeaders(result.Header, now)
 	if !cache.CacheableByPolicy(policy, cache.StorePolicy{CacheNoStore: s.cfg.CachePolicy.CacheNoStore, CachePrivate: s.cfg.CachePolicy.CachePrivate}) {
-		return &Outcome{Status: StatusBypass, ProxyResult: result}, nil
+		return outcomeFromResult(StatusBypass, result), nil
 	}
 	contentType := fetch.SafeContentType(result.ContentType, result.DetectedContentType)
 	meta := &cache.Metadata{
@@ -183,7 +185,19 @@ func (s *Service) refresh(ctx context.Context, key, rawURL string, u *url.URL, i
 	if hadCache {
 		status = StatusRefreshed
 	}
-	return &Outcome{Status: status, Metadata: meta, Blob: blob, BlobInfo: info}, nil
+	return &Outcome{Status: status, Metadata: meta, Blob: blob, BlobInfo: info, OriginRequestHeaders: result.RequestHeaders.Clone(), OriginStatusCode: result.StatusCode}, nil
+}
+
+func outcomeFromResult(status string, result *fetch.Result) *Outcome {
+	if result == nil {
+		return &Outcome{Status: status}
+	}
+	return &Outcome{
+		Status:               status,
+		ProxyResult:          result,
+		OriginRequestHeaders: result.RequestHeaders.Clone(),
+		OriginStatusCode:     result.StatusCode,
+	}
 }
 
 func (s *Service) loadEntry(ctx context.Context, key string) (*cache.Metadata, io.ReadCloser, storage.BlobInfo) {

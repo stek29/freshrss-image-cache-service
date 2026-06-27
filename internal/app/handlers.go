@@ -72,6 +72,7 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to fetch", http.StatusBadGateway)
 		return
 	}
+	setAccessLogOrigin(r.Context(), outcome)
 	setAccessLogCacheStatus(r.Context(), outcome.Status)
 	h.writeOutcome(w, outcome)
 }
@@ -100,6 +101,7 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 		writeJSONStatus(w, http.StatusBadGateway, "FAILED_TO_FETCH")
 		return
 	}
+	setAccessLogOrigin(r.Context(), outcome)
 	setAccessLogCacheStatus(r.Context(), outcome.Status)
 	if outcome.Blob != nil {
 		_ = outcome.Blob.Close()
@@ -124,8 +126,13 @@ func (h *Handler) writeOutcome(w http.ResponseWriter, outcome *Outcome) {
 }
 
 type accessLogInfo struct {
-	targetURL   string
-	cacheStatus string
+	targetURL       string
+	clientReferer   string
+	clientUserAgent string
+	originReferer   string
+	originUserAgent string
+	originStatus    int
+	cacheStatus     string
 }
 
 type accessLogContextKey struct{}
@@ -138,7 +145,11 @@ func (h *Handler) accessLog(next http.Handler) http.Handler {
 		}
 
 		started := time.Now()
-		info := &accessLogInfo{targetURL: r.URL.Query().Get("url")}
+		info := &accessLogInfo{
+			targetURL:       r.URL.Query().Get("url"),
+			clientReferer:   accessLogReferer(r),
+			clientUserAgent: r.UserAgent(),
+		}
 		ctx := context.WithValue(r.Context(), accessLogContextKey{}, info)
 		r = r.WithContext(ctx)
 
@@ -152,12 +163,16 @@ func (h *Handler) accessLog(next http.Handler) http.Handler {
 			"method", r.Method,
 			"path", r.URL.Path,
 			"url", info.targetURL,
+			"client_referer", info.clientReferer,
+			"client_user_agent", info.clientUserAgent,
+			"origin_referer", info.originReferer,
+			"origin_user_agent", info.originUserAgent,
+			"origin_status", info.originStatus,
 			"cache_status", info.cacheStatus,
 			"status", rec.statusCode,
 			"bytes", rec.bytesWritten,
 			"duration", time.Since(started),
 			"remote_addr", r.RemoteAddr,
-			"user_agent", r.UserAgent(),
 		)
 	})
 }
@@ -201,6 +216,26 @@ func setAccessLogCacheStatus(ctx context.Context, status string) {
 		return
 	}
 	info.cacheStatus = status
+}
+
+func setAccessLogOrigin(ctx context.Context, outcome *Outcome) {
+	info, ok := ctx.Value(accessLogContextKey{}).(*accessLogInfo)
+	if !ok || outcome == nil {
+		return
+	}
+	info.originStatus = outcome.OriginStatusCode
+	if outcome.OriginRequestHeaders == nil {
+		return
+	}
+	info.originReferer = outcome.OriginRequestHeaders.Get("Referer")
+	info.originUserAgent = outcome.OriginRequestHeaders.Get("User-Agent")
+}
+
+func accessLogReferer(r *http.Request) string {
+	if referer := r.URL.Query().Get("referer"); referer != "" {
+		return referer
+	}
+	return r.Header.Get("Referer")
 }
 
 func writeJSONStatus(w http.ResponseWriter, code int, status string) {

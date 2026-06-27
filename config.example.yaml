@@ -1,0 +1,36 @@
+listen: ":3000"
+data_dir: "./images"
+access_token: "change-me"
+
+http_client:
+  timeout: "15s"
+  max_body_size: "50MiB"
+  follow_redirects: true
+  max_redirects: 5
+
+cache_policy:
+  cache_no_store: true
+  cache_private: true
+
+headers:
+  forward_request_headers:
+    - "User-Agent"
+    - "Accept"
+    - "Accept-Language"
+    - "Referer"
+    - "Origin"
+
+  default_headers:
+    User-Agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+    Accept-Language: "en-US,en;q=0.9"
+
+  host_headers:
+    "www.zhihu.com":
+      Referer: "https://daily.zhihu.com/"
+    "cn.nikkei.com":
+      Referer: "https://cn.nikkei.com/"
+
+logging:
+  level: "info"
+  format: "text"

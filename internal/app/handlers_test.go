@@ -183,6 +183,69 @@ func TestFetchErrorLoggedAsWarn(t *testing.T) {
 	}
 }
 
+func TestAccessLogIncludesURLCacheStatusAndTiming(t *testing.T) {
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "max-age=3600")
+		_, _ = w.Write(testPNG(t))
+	}))
+	defer origin.Close()
+
+	cfg := config.Default()
+	cfg.DataDir = t.TempDir()
+	store := storage.NewFileSystemStore(cfg.DataDir)
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	svc := NewService(cfg, store, fetch.NewClient(cfg.HTTPClient), logger)
+	ts := httptest.NewServer(NewHandler(svc, cfg.AccessToken, cfg.CORS, logger).Routes())
+	defer ts.Close()
+
+	rawURL := origin.URL + "/image.png"
+	res := get(t, ts.URL+"/?url="+rawURL)
+	defer res.Body.Close()
+	if res.Header.Get("X-Piccache-Status") != StatusMiss {
+		t.Fatalf("expected MISS, got %s", res.Header.Get("X-Piccache-Status"))
+	}
+
+	logText := logs.String()
+	if !strings.Contains(logText, "level=INFO") || !strings.Contains(logText, "msg=access") {
+		t.Fatalf("expected access log, got %q", logText)
+	}
+	for _, want := range []string{
+		"method=GET",
+		"path=/",
+		"url=" + rawURL,
+		"cache_status=MISS",
+		"status=200",
+		"bytes=",
+		"duration=",
+	} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("expected %q in access log, got %q", want, logText)
+		}
+	}
+}
+
+func TestHealthzDoesNotWriteAccessLog(t *testing.T) {
+	cfg := config.Default()
+	cfg.DataDir = t.TempDir()
+	store := storage.NewFileSystemStore(cfg.DataDir)
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	svc := NewService(cfg, store, fetch.NewClient(cfg.HTTPClient), logger)
+	ts := httptest.NewServer(NewHandler(svc, cfg.AccessToken, cfg.CORS, logger).Routes())
+	defer ts.Close()
+
+	res := get(t, ts.URL+"/healthz")
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", res.StatusCode)
+	}
+	if logs.Len() != 0 {
+		t.Fatalf("expected no healthz access log, got %q", logs.String())
+	}
+}
+
 func TestPOSTInvalidToken(t *testing.T) {
 	ts := httptest.NewServer(testServer(t))
 	defer ts.Close()
@@ -236,7 +299,7 @@ func testServer(t *testing.T) http.Handler {
 	cfg.AccessToken = "secret"
 	store := storage.NewFileSystemStore(cfg.DataDir)
 	svc := NewService(cfg, store, fetch.NewClient(cfg.HTTPClient), slog.New(slog.NewTextHandler(io.Discard, nil)))
-	return NewHandler(svc, cfg.AccessToken, cfg.CORS, slog.Default()).Routes()
+	return NewHandler(svc, cfg.AccessToken, cfg.CORS, slog.New(slog.NewTextHandler(io.Discard, nil))).Routes()
 }
 
 func TestCORSPreflight(t *testing.T) {
@@ -301,7 +364,7 @@ func TestCORSRestrictedOrigin(t *testing.T) {
 	cfg.CORS.AllowedOrigins = []string{"https://allowed.example"}
 	store := storage.NewFileSystemStore(cfg.DataDir)
 	svc := NewService(cfg, store, fetch.NewClient(cfg.HTTPClient), slog.New(slog.NewTextHandler(io.Discard, nil)))
-	ts := httptest.NewServer(NewHandler(svc, cfg.AccessToken, cfg.CORS, slog.Default()).Routes())
+	ts := httptest.NewServer(NewHandler(svc, cfg.AccessToken, cfg.CORS, slog.New(slog.NewTextHandler(io.Discard, nil))).Routes())
 	defer ts.Close()
 
 	req, err := http.NewRequest(http.MethodOptions, ts.URL+"/", nil)

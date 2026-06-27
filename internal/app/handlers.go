@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/stek29/freshrss-image-cache-service/internal/config"
 	"github.com/stek29/freshrss-image-cache-service/internal/response"
@@ -35,7 +37,7 @@ func (h *Handler) Routes() http.Handler {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
 	})
-	return mux
+	return h.accessLog(mux)
 }
 
 func (h *Handler) root(w http.ResponseWriter, r *http.Request) {
@@ -56,6 +58,7 @@ func (h *Handler) root(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 	rawURL := r.URL.Query().Get("url")
+	setAccessLogURL(r.Context(), rawURL)
 	if rawURL == "" {
 		http.Error(w, "missing url", http.StatusBadRequest)
 		return
@@ -69,6 +72,7 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to fetch", http.StatusBadGateway)
 		return
 	}
+	setAccessLogCacheStatus(r.Context(), outcome.Status)
 	h.writeOutcome(w, outcome)
 }
 
@@ -82,15 +86,25 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 		writeJSONStatus(w, http.StatusBadRequest, "BAD_REQUEST")
 		return
 	}
+	setAccessLogURL(r.Context(), req.URL)
 	if subtle.ConstantTimeCompare([]byte(req.AccessToken), []byte(h.token)) != 1 {
 		writeJSONStatus(w, http.StatusForbidden, "INVALID_TOKEN")
 		return
 	}
-	if err := h.service.Warm(r.Context(), req.URL); err != nil {
+	outcome, err := h.service.Resolve(r.Context(), req.URL, http.Header{}, "")
+	if err != nil {
 		if errors.Is(err, ErrInvalidURL) {
 			writeJSONStatus(w, http.StatusBadRequest, "INVALID_URL")
 			return
 		}
+		writeJSONStatus(w, http.StatusBadGateway, "FAILED_TO_FETCH")
+		return
+	}
+	setAccessLogCacheStatus(r.Context(), outcome.Status)
+	if outcome.Blob != nil {
+		_ = outcome.Blob.Close()
+	}
+	if outcome.Status == StatusBypass {
 		writeJSONStatus(w, http.StatusBadGateway, "FAILED_TO_FETCH")
 		return
 	}
@@ -107,6 +121,86 @@ func (h *Handler) writeOutcome(w http.ResponseWriter, outcome *Outcome) {
 	}
 	defer outcome.Blob.Close()
 	response.ServeCached(w, outcome.Status, outcome.Metadata, outcome.Blob, outcome.BlobInfo.Size)
+}
+
+type accessLogInfo struct {
+	targetURL   string
+	cacheStatus string
+}
+
+type accessLogContextKey struct{}
+
+func (h *Handler) accessLog(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		started := time.Now()
+		info := &accessLogInfo{targetURL: r.URL.Query().Get("url")}
+		ctx := context.WithValue(r.Context(), accessLogContextKey{}, info)
+		r = r.WithContext(ctx)
+
+		rec := &accessLogResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+		next.ServeHTTP(rec, r)
+
+		if info.cacheStatus == "" {
+			info.cacheStatus = rec.Header().Get("X-Piccache-Status")
+		}
+		h.logger.Info("access",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"url", info.targetURL,
+			"cache_status", info.cacheStatus,
+			"status", rec.statusCode,
+			"bytes", rec.bytesWritten,
+			"duration", time.Since(started),
+			"remote_addr", r.RemoteAddr,
+			"user_agent", r.UserAgent(),
+		)
+	})
+}
+
+type accessLogResponseWriter struct {
+	http.ResponseWriter
+	statusCode   int
+	bytesWritten int
+	wroteHeader  bool
+}
+
+func (w *accessLogResponseWriter) WriteHeader(code int) {
+	if w.wroteHeader {
+		return
+	}
+	w.wroteHeader = true
+	w.statusCode = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *accessLogResponseWriter) Write(b []byte) (int, error) {
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
+	n, err := w.ResponseWriter.Write(b)
+	w.bytesWritten += n
+	return n, err
+}
+
+func setAccessLogURL(ctx context.Context, rawURL string) {
+	info, ok := ctx.Value(accessLogContextKey{}).(*accessLogInfo)
+	if !ok {
+		return
+	}
+	info.targetURL = rawURL
+}
+
+func setAccessLogCacheStatus(ctx context.Context, status string) {
+	info, ok := ctx.Value(accessLogContextKey{}).(*accessLogInfo)
+	if !ok {
+		return
+	}
+	info.cacheStatus = status
 }
 
 func writeJSONStatus(w http.ResponseWriter, code int, status string) {

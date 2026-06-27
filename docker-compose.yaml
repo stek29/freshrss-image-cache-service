@@ -1,0 +1,27 @@
+services:
+  image-cache:
+    image: ghcr.io/stek29/freshrss-image-cache-service:latest
+    restart: always
+
+    user: "10001:10001"
+
+    ports:
+      - "3000:3000"
+
+    environment:
+      IMAGE_CACHE_ACCESS_TOKEN: "change-me"
+      IMAGE_CACHE_DATA_DIR: "/data/images"
+
+    volumes:
+      - ./data/images:/data/images
+      - ./config.yaml:/etc/freshrss-image-cache-service/config.yaml:ro
+
+    read_only: true
+
+    cap_drop:
+      - ALL
+
+    security_opt:
+      - no-new-privileges:true
+
+    mem_limit: 256m

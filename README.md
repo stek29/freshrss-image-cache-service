@@ -70,6 +70,17 @@ docker run --rm -p 3000:3000 \
   ghcr.io/stek29/freshrss-image-cache-service:latest
 ```
 
+### Docker Compose
+
+See [docker-compose.yaml](docker-compose.yaml). Create a local config file and cache directory before starting it:
+
+```sh
+cp config.example.yaml config.yaml
+mkdir -p ./data/images
+sudo chown 10001:10001 ./data/images
+docker compose up -d
+```
+
 For local development builds:
 
 ```sh

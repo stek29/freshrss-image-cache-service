@@ -48,6 +48,7 @@ type Outcome struct {
 	ProxyResult          *fetch.Result
 	OriginRequestHeaders http.Header
 	OriginStatusCode     int
+	OriginBytes          int64
 }
 
 func NewService(cfg config.Config, store interface {
@@ -89,7 +90,7 @@ func (s *Service) Resolve(ctx context.Context, rawURL string, incoming http.Head
 	outcome := value.(*Outcome)
 	if outcome.Status == StatusBypass && meta != nil {
 		if blob, info, getErr := s.store.GetBlob(ctx, key); getErr == nil {
-			return &Outcome{Status: StatusStale, Metadata: meta, Blob: blob, BlobInfo: info, OriginRequestHeaders: outcome.OriginRequestHeaders, OriginStatusCode: outcome.OriginStatusCode}, nil
+			return &Outcome{Status: StatusStale, Metadata: meta, Blob: blob, BlobInfo: info, OriginRequestHeaders: outcome.OriginRequestHeaders, OriginStatusCode: outcome.OriginStatusCode, OriginBytes: outcome.OriginBytes}, nil
 		}
 	}
 	return outcome, nil
@@ -143,7 +144,7 @@ func (s *Service) refresh(ctx context.Context, key, rawURL string, u *url.URL, i
 		if err != nil {
 			return nil, err
 		}
-		return &Outcome{Status: StatusRevalidated, Metadata: meta, Blob: blob, BlobInfo: info, OriginRequestHeaders: result.RequestHeaders.Clone(), OriginStatusCode: result.StatusCode}, nil
+		return &Outcome{Status: StatusRevalidated, Metadata: meta, Blob: blob, BlobInfo: info, OriginRequestHeaders: result.RequestHeaders.Clone(), OriginStatusCode: result.StatusCode, OriginBytes: int64(len(result.Body))}, nil
 	}
 	if !result.ValidImage200() {
 		return outcomeFromResult(StatusBypass, result), nil
@@ -185,7 +186,7 @@ func (s *Service) refresh(ctx context.Context, key, rawURL string, u *url.URL, i
 	if hadCache {
 		status = StatusRefreshed
 	}
-	return &Outcome{Status: status, Metadata: meta, Blob: blob, BlobInfo: info, OriginRequestHeaders: result.RequestHeaders.Clone(), OriginStatusCode: result.StatusCode}, nil
+	return &Outcome{Status: status, Metadata: meta, Blob: blob, BlobInfo: info, OriginRequestHeaders: result.RequestHeaders.Clone(), OriginStatusCode: result.StatusCode, OriginBytes: int64(len(result.Body))}, nil
 }
 
 func outcomeFromResult(status string, result *fetch.Result) *Outcome {
@@ -197,6 +198,7 @@ func outcomeFromResult(status string, result *fetch.Result) *Outcome {
 		ProxyResult:          result,
 		OriginRequestHeaders: result.RequestHeaders.Clone(),
 		OriginStatusCode:     result.StatusCode,
+		OriginBytes:          int64(len(result.Body)),
 	}
 }
 

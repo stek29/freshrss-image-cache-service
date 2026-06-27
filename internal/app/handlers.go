@@ -129,9 +129,10 @@ type accessLogInfo struct {
 	targetURL       string
 	clientReferer   string
 	clientUserAgent string
-	originReferer   string
-	originUserAgent string
+	sentReferer     string
+	sentUserAgent   string
 	originStatus    int
+	originBytes     int64
 	cacheStatus     string
 }
 
@@ -165,9 +166,10 @@ func (h *Handler) accessLog(next http.Handler) http.Handler {
 			"url", info.targetURL,
 			"client_referer", info.clientReferer,
 			"client_user_agent", info.clientUserAgent,
-			"origin_referer", info.originReferer,
-			"origin_user_agent", info.originUserAgent,
+			"sent_referer", info.sentReferer,
+			"sent_user_agent", info.sentUserAgent,
 			"origin_status", info.originStatus,
+			"origin_bytes", info.originBytes,
 			"cache_status", info.cacheStatus,
 			"status", rec.statusCode,
 			"bytes", rec.bytesWritten,
@@ -224,11 +226,12 @@ func setAccessLogOrigin(ctx context.Context, outcome *Outcome) {
 		return
 	}
 	info.originStatus = outcome.OriginStatusCode
+	info.originBytes = outcome.OriginBytes
 	if outcome.OriginRequestHeaders == nil {
 		return
 	}
-	info.originReferer = outcome.OriginRequestHeaders.Get("Referer")
-	info.originUserAgent = outcome.OriginRequestHeaders.Get("User-Agent")
+	info.sentReferer = outcome.OriginRequestHeaders.Get("Referer")
+	info.sentUserAgent = outcome.OriginRequestHeaders.Get("User-Agent")
 }
 
 func accessLogReferer(r *http.Request) string {

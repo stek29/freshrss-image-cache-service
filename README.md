@@ -41,7 +41,7 @@ See [config.example.yaml](config.example.yaml).
 
 ## Logging
 
-Each non-`/healthz` request writes an `access` log with the request URL, cache status, response status, bytes, and duration. It also logs `client_referer`/`client_user_agent` as received by the service and `origin_referer`/`origin_user_agent`/`origin_status` as sent to or returned by the origin when an origin request is made.
+Each non-`/healthz` request writes an `access` log with the request URL, cache status, response status, bytes, and duration. It also logs `client_referer`/`client_user_agent` as received by the service, `sent_referer`/`sent_user_agent` as sent to the origin, and `origin_status`/`origin_bytes` as returned by the origin when an origin request is made.
 
 ## CORS
 

@@ -238,9 +238,10 @@ func TestAccessLogIncludesURLCacheStatusAndTiming(t *testing.T) {
 		"url=" + rawURL,
 		"client_referer=" + referer,
 		"client_user_agent=" + userAgent,
-		"origin_referer=" + referer,
-		"origin_user_agent=" + userAgent,
+		"sent_referer=" + referer,
+		"sent_user_agent=" + userAgent,
 		"origin_status=200",
+		"origin_bytes=",
 		"cache_status=MISS",
 		"status=200",
 		"bytes=",
@@ -294,11 +295,12 @@ func TestPrepareFailureAccessLogIncludesOriginStatus(t *testing.T) {
 		"url=" + rawURL,
 		"client_referer=" + referer,
 		"client_user_agent=" + userAgent,
-		"origin_referer=" + referer,
-		"origin_user_agent=" + userAgent,
+		"sent_referer=" + referer,
+		"sent_user_agent=" + userAgent,
 		"cache_status=BYPASS",
 		"status=502",
 		"origin_status=500",
+		"origin_bytes=",
 	} {
 		if !strings.Contains(logText, want) {
 			t.Fatalf("expected %q in access log, got %q", want, logText)

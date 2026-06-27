@@ -80,8 +80,18 @@ func TestPOSTCompatibility(t *testing.T) {
 	ts := httptest.NewServer(testServer(t))
 	defer ts.Close()
 
-	body, _ := json.Marshal(map[string]string{"url": origin.URL + "/image.png", "access_token": "secret"})
-	res, err := http.Post(ts.URL+"/", "application/json", bytes.NewReader(body))
+	rawURL := origin.URL + "/image.png"
+	referer := "https://reader.example/post"
+	userAgent := "reader-prepare-test"
+	body, _ := json.Marshal(map[string]string{"url": rawURL, "access_token": "secret"})
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Referer", referer)
+	req.Header.Set("User-Agent", userAgent)
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,8 +268,18 @@ func TestPrepareFailureAccessLogIncludesOriginStatus(t *testing.T) {
 	ts := httptest.NewServer(NewHandler(svc, cfg.AccessToken, cfg.CORS, logger).Routes())
 	defer ts.Close()
 
-	body, _ := json.Marshal(map[string]string{"url": origin.URL + "/image.png", "access_token": "secret"})
-	res, err := http.Post(ts.URL+"/", "application/json", bytes.NewReader(body))
+	rawURL := origin.URL + "/image.png"
+	referer := "https://reader.example/post"
+	userAgent := "reader-prepare-test"
+	body, _ := json.Marshal(map[string]string{"url": rawURL, "access_token": "secret"})
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Referer", referer)
+	req.Header.Set("User-Agent", userAgent)
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,6 +291,11 @@ func TestPrepareFailureAccessLogIncludesOriginStatus(t *testing.T) {
 	logText := logs.String()
 	for _, want := range []string{
 		"msg=access",
+		"url=" + rawURL,
+		"client_referer=" + referer,
+		"client_user_agent=" + userAgent,
+		"origin_referer=" + referer,
+		"origin_user_agent=" + userAgent,
 		"cache_status=BYPASS",
 		"status=502",
 		"origin_status=500",

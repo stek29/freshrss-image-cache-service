@@ -92,7 +92,7 @@ func (h *Handler) post(w http.ResponseWriter, r *http.Request) {
 		writeJSONStatus(w, http.StatusForbidden, "INVALID_TOKEN")
 		return
 	}
-	outcome, err := h.service.Resolve(r.Context(), req.URL, http.Header{}, "")
+	outcome, err := h.service.Resolve(r.Context(), req.URL, r.Header, accessLogReferer(r))
 	if err != nil {
 		if errors.Is(err, ErrInvalidURL) {
 			writeJSONStatus(w, http.StatusBadRequest, "INVALID_URL")

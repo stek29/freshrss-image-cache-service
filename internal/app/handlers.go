@@ -7,21 +7,25 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 
+	"github.com/stek29/freshrss-image-cache-service/internal/config"
 	"github.com/stek29/freshrss-image-cache-service/internal/response"
 )
 
 type Handler struct {
 	service *Service
 	token   string
+	cors    config.CORS
 	logger  *slog.Logger
 }
 
-func NewHandler(service *Service, token string, logger *slog.Logger) *Handler {
+func NewHandler(service *Service, token string, cors config.CORS, logger *slog.Logger) *Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Handler{service: service, token: token, logger: logger}
+	return &Handler{service: service, token: token, cors: cors, logger: logger}
 }
 
 func (h *Handler) Routes() http.Handler {
@@ -35,13 +39,17 @@ func (h *Handler) Routes() http.Handler {
 }
 
 func (h *Handler) root(w http.ResponseWriter, r *http.Request) {
+	h.applyCORS(w, r)
 	switch r.Method {
 	case http.MethodGet:
 		h.get(w, r)
 	case http.MethodPost:
 		h.post(w, r)
+	case http.MethodOptions:
+		w.Header().Set("Allow", "GET, POST, OPTIONS")
+		w.WriteHeader(http.StatusNoContent)
 	default:
-		w.Header().Set("Allow", "GET, POST")
+		w.Header().Set("Allow", "GET, POST, OPTIONS")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
@@ -105,4 +113,43 @@ func writeJSONStatus(w http.ResponseWriter, code int, status string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": status})
+}
+
+func (h *Handler) applyCORS(w http.ResponseWriter, r *http.Request) {
+	if !h.cors.Enabled {
+		return
+	}
+	origin := allowedOrigin(h.cors.AllowedOrigins, r.Header.Get("Origin"))
+	if origin == "" {
+		return
+	}
+	header := w.Header()
+	header.Set("Access-Control-Allow-Origin", origin)
+	if origin != "*" {
+		header.Add("Vary", "Origin")
+	}
+	if len(h.cors.AllowedMethods) > 0 {
+		header.Set("Access-Control-Allow-Methods", strings.Join(h.cors.AllowedMethods, ", "))
+	}
+	if len(h.cors.AllowedHeaders) > 0 {
+		header.Set("Access-Control-Allow-Headers", strings.Join(h.cors.AllowedHeaders, ", "))
+	}
+	if len(h.cors.ExposeHeaders) > 0 {
+		header.Set("Access-Control-Expose-Headers", strings.Join(h.cors.ExposeHeaders, ", "))
+	}
+	if h.cors.MaxAge > 0 {
+		header.Set("Access-Control-Max-Age", strconv.Itoa(h.cors.MaxAge))
+	}
+}
+
+func allowedOrigin(allowed []string, origin string) string {
+	for _, candidate := range allowed {
+		if candidate == "*" {
+			return "*"
+		}
+		if origin != "" && strings.EqualFold(candidate, origin) {
+			return origin
+		}
+	}
+	return ""
 }

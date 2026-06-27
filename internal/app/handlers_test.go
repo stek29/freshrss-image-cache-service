@@ -207,7 +207,104 @@ func testServer(t *testing.T) http.Handler {
 	cfg.AccessToken = "secret"
 	store := storage.NewFileSystemStore(cfg.DataDir)
 	svc := NewService(cfg, store, fetch.NewClient(cfg.HTTPClient), slog.New(slog.NewTextHandler(io.Discard, nil)))
-	return NewHandler(svc, cfg.AccessToken, slog.Default()).Routes()
+	return NewHandler(svc, cfg.AccessToken, cfg.CORS, slog.Default()).Routes()
+}
+
+func TestCORSPreflight(t *testing.T) {
+	ts := httptest.NewServer(testServer(t))
+	defer ts.Close()
+
+	req, err := http.NewRequest(http.MethodOptions, ts.URL+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Origin", "https://reader.example")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d", res.StatusCode)
+	}
+	if res.Header.Get("Access-Control-Allow-Origin") != "*" {
+		t.Fatalf("allow origin = %q", res.Header.Get("Access-Control-Allow-Origin"))
+	}
+	if res.Header.Get("Access-Control-Allow-Methods") != "GET, POST, OPTIONS" {
+		t.Fatalf("allow methods = %q", res.Header.Get("Access-Control-Allow-Methods"))
+	}
+	if res.Header.Get("Access-Control-Allow-Headers") != "Content-Type" {
+		t.Fatalf("allow headers = %q", res.Header.Get("Access-Control-Allow-Headers"))
+	}
+}
+
+func TestCORSExposesCacheStatus(t *testing.T) {
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(testPNG(t))
+	}))
+	defer origin.Close()
+	ts := httptest.NewServer(testServer(t))
+	defer ts.Close()
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/?url="+origin.URL+"/image.png", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Origin", "https://reader.example")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.Header.Get("Access-Control-Allow-Origin") != "*" {
+		t.Fatalf("allow origin = %q", res.Header.Get("Access-Control-Allow-Origin"))
+	}
+	if res.Header.Get("Access-Control-Expose-Headers") != "X-Piccache-Status, Warning" {
+		t.Fatalf("expose headers = %q", res.Header.Get("Access-Control-Expose-Headers"))
+	}
+}
+
+func TestCORSRestrictedOrigin(t *testing.T) {
+	cfg := config.Default()
+	cfg.DataDir = t.TempDir()
+	cfg.CORS.AllowedOrigins = []string{"https://allowed.example"}
+	store := storage.NewFileSystemStore(cfg.DataDir)
+	svc := NewService(cfg, store, fetch.NewClient(cfg.HTTPClient), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ts := httptest.NewServer(NewHandler(svc, cfg.AccessToken, cfg.CORS, slog.Default()).Routes())
+	defer ts.Close()
+
+	req, err := http.NewRequest(http.MethodOptions, ts.URL+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Origin", "https://blocked.example")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.Header.Get("Access-Control-Allow-Origin") != "" {
+		t.Fatalf("unexpected allow origin: %q", res.Header.Get("Access-Control-Allow-Origin"))
+	}
+
+	req, err = http.NewRequest(http.MethodOptions, ts.URL+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Origin", "https://allowed.example")
+	res, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.Header.Get("Access-Control-Allow-Origin") != "https://allowed.example" {
+		t.Fatalf("allow origin = %q", res.Header.Get("Access-Control-Allow-Origin"))
+	}
+	if res.Header.Get("Vary") != "Origin" {
+		t.Fatalf("vary = %q", res.Header.Get("Vary"))
+	}
 }
 
 func get(t *testing.T, u string) *http.Response {

@@ -77,6 +77,21 @@ func normalize(cfg *Config) {
 	if cfg.Headers.HostHeaders == nil {
 		cfg.Headers.HostHeaders = map[string]map[string]string{}
 	}
+	if len(cfg.CORS.AllowedOrigins) == 0 {
+		cfg.CORS.AllowedOrigins = def.CORS.AllowedOrigins
+	}
+	if len(cfg.CORS.AllowedMethods) == 0 {
+		cfg.CORS.AllowedMethods = def.CORS.AllowedMethods
+	}
+	if len(cfg.CORS.AllowedHeaders) == 0 {
+		cfg.CORS.AllowedHeaders = def.CORS.AllowedHeaders
+	}
+	if len(cfg.CORS.ExposeHeaders) == 0 {
+		cfg.CORS.ExposeHeaders = def.CORS.ExposeHeaders
+	}
+	if cfg.CORS.MaxAge == 0 {
+		cfg.CORS.MaxAge = def.CORS.MaxAge
+	}
 	if cfg.Logging.Level == "" {
 		cfg.Logging.Level = def.Logging.Level
 	}

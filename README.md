@@ -39,6 +39,17 @@ Environment overrides:
 
 See [config.example.yaml](config.example.yaml).
 
+## CORS
+
+CORS is enabled by default so browser clients can use the proxy with `fetch()` and read cache diagnostics:
+
+- `Access-Control-Allow-Origin: *`
+- `Access-Control-Allow-Methods: GET, POST, OPTIONS`
+- `Access-Control-Allow-Headers: Content-Type`
+- `Access-Control-Expose-Headers: X-Piccache-Status, Warning`
+
+Set `cors.enabled: false` or restrict `cors.allowed_origins` in `config.yaml` if the authenticated `POST /` warm-cache endpoint should only be callable from selected browser origins.
+
 ## Run
 
 ```sh

@@ -14,7 +14,7 @@ func BuildServer(cfg config.Config, logger *slog.Logger) *http.Server {
 	store := storage.NewFileSystemStore(cfg.DataDir)
 	fetcher := fetch.NewClient(cfg.HTTPClient)
 	service := NewService(cfg, store, fetcher, logger)
-	handler := NewHandler(service, cfg.AccessToken, logger)
+	handler := NewHandler(service, cfg.AccessToken, cfg.CORS, logger)
 	return &http.Server{
 		Addr:    cfg.Listen,
 		Handler: handler.Routes(),

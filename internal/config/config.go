@@ -9,6 +9,7 @@ type Config struct {
 	HTTPClient  HTTPClient  `yaml:"http_client"`
 	CachePolicy CachePolicy `yaml:"cache_policy"`
 	Headers     Headers     `yaml:"headers"`
+	CORS        CORS        `yaml:"cors"`
 	Logging     Logging     `yaml:"logging"`
 }
 
@@ -28,6 +29,15 @@ type Headers struct {
 	ForwardRequestHeaders []string                     `yaml:"forward_request_headers"`
 	DefaultHeaders        map[string]string            `yaml:"default_headers"`
 	HostHeaders           map[string]map[string]string `yaml:"host_headers"`
+}
+
+type CORS struct {
+	Enabled        bool     `yaml:"enabled"`
+	AllowedOrigins []string `yaml:"allowed_origins"`
+	AllowedMethods []string `yaml:"allowed_methods"`
+	AllowedHeaders []string `yaml:"allowed_headers"`
+	ExposeHeaders  []string `yaml:"expose_headers"`
+	MaxAge         int      `yaml:"max_age"`
 }
 
 type Logging struct {
@@ -58,6 +68,14 @@ func Default() Config {
 				"Accept-Language": "en-US,en;q=0.9",
 			},
 			HostHeaders: map[string]map[string]string{},
+		},
+		CORS: CORS{
+			Enabled:        true,
+			AllowedOrigins: []string{"*"},
+			AllowedMethods: []string{"GET", "POST", "OPTIONS"},
+			AllowedHeaders: []string{"Content-Type"},
+			ExposeHeaders:  []string{"X-Piccache-Status", "Warning"},
+			MaxAge:         86400,
 		},
 		Logging: Logging{Level: "info", Format: "text"},
 	}

@@ -31,6 +31,21 @@ headers:
     "cn.nikkei.com":
       Referer: "https://cn.nikkei.com/"
 
+cors:
+  enabled: true
+  allowed_origins:
+    - "*"
+  allowed_methods:
+    - "GET"
+    - "POST"
+    - "OPTIONS"
+  allowed_headers:
+    - "Content-Type"
+  expose_headers:
+    - "X-Piccache-Status"
+    - "Warning"
+  max_age: 86400
+
 logging:
   level: "info"
   format: "text"

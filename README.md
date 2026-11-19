@@ -65,7 +65,7 @@ go run ./cmd/freshrss-image-cache-service
 Images are built and published by GitHub Actions on every push to `main`:
 
 - `ghcr.io/stek29/freshrss-image-cache-service:latest`
-- `ghcr.io/stek29/freshrss-image-cache-service:sha-<shortsha>`
+- `ghcr.io/stek29/freshrss-image-cache-service:sha-<shortsha>` (only the three newest are kept)
 
 ```sh
 docker run --rm -p 3000:3000 \
